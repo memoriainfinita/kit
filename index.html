@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KIT — Keyboard Input Tester</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace !important; }
+    #typed-text-container { scrollbar-width: thin; scrollbar-color: #404040 transparent; }
+    #history-list { scrollbar-width: thin; scrollbar-color: #404040 transparent; }
+    .animate-pulse { animation: pulse 2s cubic-bezier(0.4,0,0.6,1) infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+    #kitt-bar { transition: opacity 0.4s; }
+  </style>
+</head>
+<body class="bg-neutral-950 text-neutral-50 antialiased select-none overflow-hidden">
+
+  <div id="kitt-bar" style="display:none;position:fixed;top:0;left:50%;transform:translateX(-50%);width:560px;max-width:80vw;height:14px;background:#060000;z-index:100;cursor:pointer;border-radius:0 0 6px 6px;border:1px solid #1a0000;border-top:none;box-shadow:0 4px 16px rgba(0,0,0,0.9);overflow:visible;">
+    <canvas id="kitt-canvas" style="position:absolute;top:0;left:0;display:block;pointer-events:none;"></canvas>
+  </div>
+
+  <div id="focus-warning" style="display:none" class="fixed top-0 left-0 w-full bg-yellow-500/10 border-b border-yellow-500/20 text-yellow-500/80 text-xs text-center py-1.5 z-50 pointer-events-none font-mono">
+    ⚠️ Haz clic en cualquier parte para que el navegador detecte el teclado
+  </div>
+
+  <main id="main" class="min-h-screen flex flex-col md:flex-row">
+
+    <!-- Left Panel -->
+    <div class="flex-1 flex flex-col items-center p-8 border-b md:border-b-0 md:border-r border-neutral-800/50 relative">
+
+      <div class="absolute top-6 left-6 flex items-center gap-3">
+        <div id="rec-dot" class="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></div>
+        <span id="rec-label" class="text-xs font-mono text-neutral-400 uppercase tracking-widest">Escuchando</span>
+      </div>
+
+      <div class="absolute top-6 right-6 flex flex-col items-end">
+        <div id="kpm-value" class="text-3xl font-bold font-mono text-neutral-200">0</div>
+        <div class="text-xs font-mono text-neutral-500 uppercase tracking-widest">KPM (Pulsaciones/Min)</div>
+      </div>
+
+      <!-- Text View -->
+      <div id="text-view" class="flex-1 flex flex-col items-center justify-center w-full mt-16 mb-8">
+        <div id="waiting-display" class="text-center text-neutral-500">
+          <div class="text-2xl mb-2">Esperando entrada...</div>
+          <div class="text-sm font-mono">Presiona cualquier tecla o botón del ratón</div>
+        </div>
+        <div id="last-event-display" style="display:none" class="text-center">
+          <div id="last-device-action" class="text-sm font-mono text-neutral-500 mb-4 uppercase tracking-widest"></div>
+          <div id="last-value" class="text-6xl md:text-8xl font-bold tracking-tight mb-6 text-neutral-100"></div>
+          <div id="last-details" class="text-lg font-mono text-neutral-400 bg-neutral-900/50 px-6 py-3 rounded-lg border border-neutral-800/50 inline-block"></div>
+        </div>
+        <div id="typed-text-container" class="w-full max-w-2xl h-32 bg-[#0a0a0a] border border-neutral-800/80 rounded-lg p-4 overflow-y-auto font-mono text-sm text-neutral-300 whitespace-pre-wrap break-words shadow-inner mt-8">
+          <span id="typed-text-placeholder" class="text-neutral-600 italic">El texto escrito aparecerá aquí...</span>
+          <span id="typed-text-content" style="display:none"></span>
+        </div>
+      </div>
+
+      <!-- Keymap View -->
+      <div id="keymap-view" style="display:none" class="flex-1 flex flex-col items-center justify-center w-full mt-16 mb-8 overflow-x-auto">
+        <div class="mb-8 flex flex-col items-center gap-2">
+          <div id="keys-count" class="text-3xl font-mono font-bold text-neutral-200">0 / 0</div>
+          <div id="keys-label" class="text-xs font-mono text-neutral-500 uppercase tracking-widest">Teclas Probadas (0%)</div>
+          <div class="w-64 h-2 mt-2 bg-neutral-900 rounded-full overflow-hidden border border-neutral-800">
+            <div id="keys-progress" class="h-full bg-green-500 transition-all duration-300" style="width:0%"></div>
+          </div>
+        </div>
+        <div id="keyboard-layout" class="flex flex-col xl:flex-row gap-8 bg-neutral-900/30 p-8 rounded-2xl border border-neutral-800/50 min-w-max"></div>
+      </div>
+
+      <!-- Controls -->
+      <div class="absolute bottom-6 flex gap-4">
+        <button id="btn-toggle-view" class="text-xs font-mono uppercase tracking-widest px-4 py-2 rounded border border-neutral-800 hover:bg-neutral-900 text-neutral-400 hover:text-neutral-200 transition-colors cursor-pointer">Modo Teclado</button>
+        <button id="btn-recording" class="text-xs font-mono uppercase tracking-widest px-4 py-2 rounded border border-neutral-800 hover:bg-neutral-900 text-neutral-400 hover:text-neutral-200 transition-colors cursor-pointer">Pausar</button>
+        <button id="btn-clear" class="text-xs font-mono uppercase tracking-widest px-4 py-2 rounded border border-neutral-800 hover:bg-neutral-900 text-neutral-400 hover:text-neutral-200 transition-colors cursor-pointer">Limpiar</button>
+      </div>
+    </div>
+
+    <!-- Right Panel: History -->
+    <div class="w-full md:w-96 bg-[#050505] flex flex-col h-[50vh] md:h-screen">
+      <div class="p-4 border-b border-neutral-800/50 bg-[#0a0a0a] flex flex-col gap-3">
+        <div class="flex justify-between items-center">
+          <h2 class="text-xs font-mono uppercase tracking-widest text-neutral-500">Historial</h2>
+          <div class="flex items-center gap-3">
+            <span id="history-count" class="text-xs font-mono text-neutral-600">0 eventos</span>
+            <button id="btn-toggle-history" class="text-xs font-mono text-neutral-500 hover:text-neutral-200 transition-colors cursor-pointer" title="Ocultar historial">✕</button>
+          </div>
+        </div>
+        <div class="flex gap-4 text-xs font-mono text-neutral-400">
+          <label class="flex items-center gap-1.5 cursor-pointer hover:text-neutral-200 transition-colors">
+            <input type="checkbox" id="check-releases" checked class="accent-neutral-500"> Releases
+          </label>
+          <label class="flex items-center gap-1.5 cursor-pointer hover:text-neutral-200 transition-colors">
+            <input type="checkbox" id="check-holds" class="accent-neutral-500"> Holds
+          </label>
+        </div>
+      </div>
+      <div id="history-list" class="flex-1 overflow-y-auto p-4 font-mono text-sm">
+        <div class="text-neutral-600 text-center mt-10">Sin eventos</div>
+      </div>
+    </div>
+
+  </main>
+
+  <button id="btn-show-history" style="display:none;position:fixed;top:50%;right:0;transform:translateY(-50%);writing-mode:vertical-rl;text-orientation:mixed;" class="text-xs font-mono uppercase tracking-widest px-2 py-4 bg-neutral-900 border border-neutral-800 border-r-0 rounded-l text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 transition-colors cursor-pointer">Historial</button>
+
+<script>
+// --- KEY MAP DATA ---
+const MAIN_KEYS = [
+  [{c:'Escape',l:'Esc'},{c:'F1',l:'F1'},{c:'F2',l:'F2'},{c:'F3',l:'F3'},{c:'F4',l:'F4'},{c:'F5',l:'F5'},{c:'F6',l:'F6'},{c:'F7',l:'F7'},{c:'F8',l:'F8'},{c:'F9',l:'F9'},{c:'F10',l:'F10'},{c:'F11',l:'F11'},{c:'F12',l:'F12'}],
+  [{c:'Backquote',l:'`'},{c:'Digit1',l:'1'},{c:'Digit2',l:'2'},{c:'Digit3',l:'3'},{c:'Digit4',l:'4'},{c:'Digit5',l:'5'},{c:'Digit6',l:'6'},{c:'Digit7',l:'7'},{c:'Digit8',l:'8'},{c:'Digit9',l:'9'},{c:'Digit0',l:'0'},{c:'Minus',l:'-'},{c:'Equal',l:'='},{c:'Backspace',l:'Back',w:'80px'}],
+  [{c:'Tab',l:'Tab',w:'64px'},{c:'KeyQ',l:'Q'},{c:'KeyW',l:'W'},{c:'KeyE',l:'E'},{c:'KeyR',l:'R'},{c:'KeyT',l:'T'},{c:'KeyY',l:'Y'},{c:'KeyU',l:'U'},{c:'KeyI',l:'I'},{c:'KeyO',l:'O'},{c:'KeyP',l:'P'},{c:'BracketLeft',l:'['},{c:'BracketRight',l:']'},{c:'Backslash',l:'\\',w:'64px'}],
+  [{c:'CapsLock',l:'Caps',w:'80px'},{c:'KeyA',l:'A'},{c:'KeyS',l:'S'},{c:'KeyD',l:'D'},{c:'KeyF',l:'F'},{c:'KeyG',l:'G'},{c:'KeyH',l:'H'},{c:'KeyJ',l:'J'},{c:'KeyK',l:'K'},{c:'KeyL',l:'L'},{c:'Semicolon',l:';'},{c:'Quote',l:"'"},{c:'Enter',l:'Enter',w:'80px'}],
+  [{c:'ShiftLeft',l:'Shift',w:'112px'},{c:'KeyZ',l:'Z'},{c:'KeyX',l:'X'},{c:'KeyC',l:'C'},{c:'KeyV',l:'V'},{c:'KeyB',l:'B'},{c:'KeyN',l:'N'},{c:'KeyM',l:'M'},{c:'Comma',l:','},{c:'Period',l:'.'},{c:'Slash',l:'/'},{c:'ShiftRight',l:'Shift',w:'112px'}],
+  [{c:'ControlLeft',l:'Ctrl',w:'64px'},{c:'MetaLeft',l:'Win',w:'64px'},{c:'AltLeft',l:'Alt',w:'64px'},{c:'Space',l:'Space',w:'256px'},{c:'AltRight',l:'Alt',w:'64px'},{c:'MetaRight',l:'Win',w:'64px'},{c:'ContextMenu',l:'Menu',w:'64px'},{c:'ControlRight',l:'Ctrl',w:'64px'}]
+];
+const NAV_KEYS = [
+  [{c:'Insert',l:'Ins'},{c:'Home',l:'Home'},{c:'PageUp',l:'PgUp'}],
+  [{c:'Delete',l:'Del'},{c:'End',l:'End'},{c:'PageDown',l:'PgDn'}],
+  [{c:'',l:''},{c:'',l:''},{c:'',l:''}],
+  [{c:'',l:''},{c:'ArrowUp',l:'↑'},{c:'',l:''}],
+  [{c:'ArrowLeft',l:'←'},{c:'ArrowDown',l:'↓'},{c:'ArrowRight',l:'→'}]
+];
+const NUM_KEYS = [
+  [{c:'NumLock',l:'Num'},{c:'NumpadDivide',l:'/'},{c:'NumpadMultiply',l:'*'},{c:'NumpadSubtract',l:'-'}],
+  [{c:'Numpad7',l:'7'},{c:'Numpad8',l:'8'},{c:'Numpad9',l:'9'},{c:'NumpadAdd',l:'+'}],
+  [{c:'Numpad4',l:'4'},{c:'Numpad5',l:'5'},{c:'Numpad6',l:'6'},{c:'NumpadEnter',l:'Ent'}],
+  [{c:'Numpad1',l:'1'},{c:'Numpad2',l:'2'},{c:'Numpad3',l:'3'},{c:'NumpadDecimal',l:'.'}],
+  [{c:'Numpad0',l:'0',w:'80px'},{c:'',l:''},{c:'',l:''},{c:'',l:''}]
+];
+const MOUSE_KEYS = [
+  [{c:'Mouse0',l:'Left'},{c:'Mouse1',l:'Mid'},{c:'Mouse2',l:'Right'}],
+  [{c:'Mouse3',l:'Back'},{c:'Mouse4',l:'Fwd'}]
+];
+const ALL_TESTABLE_KEYS = new Set(
+  [...MAIN_KEYS,...NAV_KEYS,...NUM_KEYS,...MOUSE_KEYS].flat().map(k=>k.c).filter(Boolean)
+);
+
+// --- STATE ---
+let lastEvent = null;
+let history = [];
+let isRecording = true;
+let recordReleases = true;
+let recordHolds = false;
+let typedText = '';
+let testedKeys = new Set();
+let showKeyMap = false;
+let pressTimestamps = [];
+
+// --- DOM ---
+const $ = id => document.getElementById(id);
+
+// --- BUILD KEYBOARD ---
+function buildKeyboard() {
+  const layout = $('keyboard-layout');
+
+  function makeRow(row) {
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;gap:6px;justify-content:center;margin-bottom:6px;';
+    row.forEach(key => {
+      if (!key.c) {
+        const spacer = document.createElement('div');
+        spacer.style.cssText = 'width:40px;height:40px;';
+        div.appendChild(spacer);
+        return;
+      }
+      const k = document.createElement('div');
+      k.id = 'key-' + key.c;
+      k.textContent = key.l;
+      k.style.cssText = `display:flex;align-items:center;justify-content:center;height:40px;width:${key.w||'40px'};border-radius:4px;border:1px solid #262626;font-size:10px;font-family:'JetBrains Mono',monospace;transition:all 0.15s;background:#030712;color:#737373;`;
+      div.appendChild(k);
+    });
+    return div;
+  }
+
+  const mainDiv = document.createElement('div');
+  MAIN_KEYS.forEach(row => mainDiv.appendChild(makeRow(row)));
+  layout.appendChild(mainDiv);
+
+  const rightDiv = document.createElement('div');
+  rightDiv.style.cssText = 'display:flex;flex-direction:column;gap:24px;';
+
+  const navNumDiv = document.createElement('div');
+  navNumDiv.style.cssText = 'display:flex;gap:32px;';
+
+  const navDiv = document.createElement('div');
+  NAV_KEYS.forEach(row => navDiv.appendChild(makeRow(row)));
+  navNumDiv.appendChild(navDiv);
+
+  const numDiv = document.createElement('div');
+  NUM_KEYS.forEach(row => numDiv.appendChild(makeRow(row)));
+  navNumDiv.appendChild(numDiv);
+
+  rightDiv.appendChild(navNumDiv);
+
+  const mouseDiv = document.createElement('div');
+  mouseDiv.style.cssText = 'padding-top:16px;border-top:1px solid #262626;';
+  const mouseLabel = document.createElement('span');
+  mouseLabel.textContent = 'Ratón';
+  mouseLabel.style.cssText = 'display:block;font-size:10px;font-family:"JetBrains Mono",monospace;color:#525252;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;';
+  mouseDiv.appendChild(mouseLabel);
+  MOUSE_KEYS.forEach(row => {
+    const rowDiv = document.createElement('div');
+    rowDiv.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;';
+    row.forEach(key => {
+      const k = document.createElement('div');
+      k.id = 'key-' + key.c;
+      k.textContent = key.l;
+      k.style.cssText = 'display:flex;align-items:center;justify-content:center;height:40px;width:48px;border-radius:4px;border:1px solid #262626;font-size:10px;font-family:"JetBrains Mono",monospace;color:#737373;background:#030712;transition:all 0.15s;';
+      rowDiv.appendChild(k);
+    });
+    mouseDiv.appendChild(rowDiv);
+  });
+  rightDiv.appendChild(mouseDiv);
+  layout.appendChild(rightDiv);
+}
+
+// --- KEY VISUAL ---
+function setKeyTested(code, tested) {
+  const el = document.getElementById('key-' + code);
+  if (!el) return;
+  if (tested) {
+    el.style.background = 'rgba(34,197,94,0.2)';
+    el.style.borderColor = 'rgba(34,197,94,0.5)';
+    el.style.color = 'rgb(74,222,128)';
+    el.style.boxShadow = '0 0 10px rgba(34,197,94,0.1)';
+  } else {
+    el.style.background = '#030712';
+    el.style.borderColor = '#262626';
+    el.style.color = '#737373';
+    el.style.boxShadow = '';
+  }
+}
+
+// --- KEYMAP STATS ---
+function updateKeymapStats() {
+  const tested = Array.from(testedKeys).filter(k => ALL_TESTABLE_KEYS.has(k)).length;
+  const total = ALL_TESTABLE_KEYS.size;
+  const pct = total > 0 ? Math.round((tested / total) * 100) : 0;
+  $('keys-count').textContent = tested + ' / ' + total;
+  $('keys-label').textContent = 'Teclas Probadas (' + pct + '%)';
+  $('keys-progress').style.width = pct + '%';
+}
+
+// --- ADD EVENT ---
+function addEvent(ev) {
+  if (!isRecording) return;
+  const now = Date.now();
+  if (ev.action === 'Press' && ev.device === 'Keyboard') pressTimestamps.push(now);
+  const entry = { ...ev, id: crypto.randomUUID(), timestamp: new Date(now) };
+  lastEvent = entry;
+  history = [entry, ...history].slice(0, 50);
+  updateLastEventDisplay();
+  updateHistoryList();
+}
+
+// --- LAST EVENT ---
+function updateLastEventDisplay() {
+  if (!lastEvent) return;
+  $('waiting-display').style.display = 'none';
+  $('last-event-display').style.display = 'block';
+  $('last-device-action').textContent = lastEvent.device + ' · ' + lastEvent.action;
+  $('last-value').textContent = lastEvent.value;
+  $('last-details').textContent = lastEvent.details;
+}
+
+// --- HISTORY ---
+function updateHistoryList() {
+  const list = $('history-list');
+  $('history-count').textContent = history.length + ' eventos';
+  if (history.length === 0) {
+    list.innerHTML = '<div style="color:#525252;text-align:center;margin-top:40px;">Sin eventos</div>';
+    return;
+  }
+  list.innerHTML = history.map(ev => {
+    const actionColor = ev.action==='Press' ? 'color:rgba(34,197,94,0.8)' : ev.action==='Release' ? 'color:rgba(239,68,68,0.8)' : ev.action==='Hold' ? 'color:rgba(234,179,8,0.8)' : 'color:rgba(59,130,246,0.8)';
+    const ts = ev.timestamp.toLocaleTimeString(undefined,{hour12:false,fractionalSecondDigits:3});
+    return `<div style="padding:8px 0;border-bottom:1px solid rgba(38,38,38,0.3);">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+        <span style="color:#d4d4d4;font-weight:700;">${ev.value}</span>
+        <span style="color:#525252;font-size:11px;">${ts}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;">
+        <span style="${actionColor}">${ev.action}</span>
+        <span style="color:#737373;">${ev.details}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// --- TYPED TEXT ---
+function updateTypedText() {
+  const container = $('typed-text-container');
+  if (typedText === '') {
+    $('typed-text-placeholder').style.display = '';
+    $('typed-text-content').style.display = 'none';
+  } else {
+    $('typed-text-placeholder').style.display = 'none';
+    $('typed-text-content').style.display = '';
+    $('typed-text-content').textContent = typedText;
+  }
+  container.scrollTop = container.scrollHeight;
+}
+
+// --- KPM ---
+function startKpmTimer() {
+  setInterval(() => {
+    const now = Date.now();
+    pressTimestamps = pressTimestamps.filter(t => now - t <= 5000);
+    $('kpm-value').textContent = pressTimestamps.length * 12;
+  }, 200);
+}
+
+// --- FOCUS ---
+function updateFocusWarning(focused) {
+  $('focus-warning').style.display = focused ? 'none' : 'block';
+}
+
+// --- TOGGLE VIEW ---
+function toggleView() {
+  showKeyMap = !showKeyMap;
+  if (showKeyMap) {
+    $('text-view').style.display = 'none';
+    $('keymap-view').style.display = 'flex';
+    $('btn-toggle-view').textContent = 'Modo Texto';
+    $('btn-toggle-view').style.cssText = 'font-size:12px;font-family:"JetBrains Mono",monospace;text-transform:uppercase;letter-spacing:0.1em;padding:8px 16px;border-radius:4px;border:1px solid #e5e5e5;background:#e5e5e5;color:#171717;cursor:pointer;';
+  } else {
+    $('keymap-view').style.display = 'none';
+    $('text-view').style.display = 'flex';
+    $('btn-toggle-view').textContent = 'Modo Teclado';
+    $('btn-toggle-view').style.cssText = '';
+  }
+}
+
+// --- TOGGLE RECORDING ---
+function toggleRecording() {
+  isRecording = !isRecording;
+  $('rec-dot').style.background = isRecording ? 'rgb(34,197,94)' : '#525252';
+  $('rec-dot').style.animationName = isRecording ? 'pulse' : 'none';
+  $('rec-label').textContent = isRecording ? 'Escuchando' : 'Pausado';
+  $('btn-recording').textContent = isRecording ? 'Pausar' : 'Reanudar';
+}
+
+// --- CLEAR ---
+function clearAll() {
+  history = [];
+  lastEvent = null;
+  typedText = '';
+  testedKeys = new Set();
+  ALL_TESTABLE_KEYS.forEach(code => setKeyTested(code, false));
+  updateHistoryList();
+  updateKeymapStats();
+  updateTypedText();
+  $('waiting-display').style.display = 'block';
+  $('last-event-display').style.display = 'none';
+}
+
+// --- EVENT LISTENERS ---
+window.addEventListener('keydown', e => {
+  if (e.repeat && !recordHolds) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (isRecording) {
+    if (!testedKeys.has(e.code)) {
+      testedKeys.add(e.code);
+      setKeyTested(e.code, true);
+      updateKeymapStats();
+    }
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      typedText += e.key;
+    } else if (e.key === 'Backspace') {
+      typedText = typedText.slice(0, -1);
+    } else if (e.key === 'Enter') {
+      typedText += '\n';
+    }
+    updateTypedText();
+  }
+  addEvent({ device:'Keyboard', action: e.repeat ? 'Hold' : 'Press', value: e.key===' ' ? 'Space' : e.key, details:`Code: ${e.code} | KeyCode: ${e.keyCode}` });
+}, { passive: false });
+
+window.addEventListener('keyup', e => {
+  if (!recordReleases) return;
+  e.preventDefault();
+  addEvent({ device:'Keyboard', action:'Release', value: e.key===' ' ? 'Space' : e.key, details:`Code: ${e.code} | KeyCode: ${e.keyCode}` });
+}, { passive: false });
+
+window.addEventListener('mousedown', e => {
+  e.preventDefault();
+  if (isRecording && !testedKeys.has('Mouse'+e.button)) {
+    testedKeys.add('Mouse'+e.button);
+    setKeyTested('Mouse'+e.button, true);
+    updateKeymapStats();
+  }
+  const btns = ['Left Click','Middle Click','Right Click','Back Button','Forward Button'];
+  addEvent({ device:'Mouse', action:'Press', value: btns[e.button]||`Button ${e.button}`, details:`X: ${e.clientX}, Y: ${e.clientY}` });
+}, { passive: false });
+
+window.addEventListener('mouseup', e => {
+  if (!recordReleases) return;
+  const btns = ['Left Click','Middle Click','Right Click','Back Button','Forward Button'];
+  addEvent({ device:'Mouse', action:'Release', value: btns[e.button]||`Button ${e.button}`, details:`X: ${e.clientX}, Y: ${e.clientY}` });
+}, { passive: false });
+
+window.addEventListener('wheel', e => {
+  const dir = e.deltaY > 0 ? 'Down' : e.deltaY < 0 ? 'Up' : null;
+  if (dir) addEvent({ device:'Wheel', action:'Scroll', value:`Scroll ${dir}`, details:`Delta: ${e.deltaY}` });
+}, { passive: true });
+
+window.addEventListener('contextmenu', e => e.preventDefault());
+window.addEventListener('focus', () => updateFocusWarning(true));
+window.addEventListener('blur', () => updateFocusWarning(false));
+
+// --- HISTORY TOGGLE ---
+const historyPanel = document.querySelector('.w-full.md\\:w-96');
+$('btn-toggle-history').addEventListener('click', e => {
+  e.stopPropagation();
+  historyPanel.style.display = 'none';
+  $('btn-show-history').style.display = 'block';
+});
+$('btn-show-history').addEventListener('click', e => {
+  e.stopPropagation();
+  historyPanel.style.display = '';
+  $('btn-show-history').style.display = 'none';
+});
+
+$('check-releases').addEventListener('change', e => recordReleases = e.target.checked);
+$('check-holds').addEventListener('change', e => recordHolds = e.target.checked);
+$('btn-toggle-view').addEventListener('click', e => { e.stopPropagation(); toggleView(); });
+$('btn-recording').addEventListener('click', e => { e.stopPropagation(); toggleRecording(); });
+$('btn-clear').addEventListener('click', e => { e.stopPropagation(); clearAll(); });
+$('main').addEventListener('click', () => window.focus());
+$('main').addEventListener('mouseenter', () => window.focus());
+
+// --- KITT EASTER EGG ---
+const KITT_SEQUENCES = ['kit te necesito', 'kitt'];
+const KITT_SLOT_W = 20; // segment + gap (18px seg + 2px gap)
+const KITT_SEG_W  = 18;
+const KITT_SEG_H  = 10;
+const KITT_SEG_Y  = 2;
+let kittBuffer   = '';
+let kittActive   = false;
+let kittPos      = 0;
+let kittDir      = 1;
+let kittRafId    = null;
+let kittLastTime = null;
+let kittFading   = false;
+let kittSegments = [];
+let kittSegStart = 0;
+
+function kittInitSegments(barWidth) {
+  const n = Math.floor((barWidth - 16 + 2) / KITT_SLOT_W);
+  const usedW = n * KITT_SLOT_W - 2;
+  kittSegStart = Math.round((barWidth - usedW) / 2);
+  kittSegments = new Array(n).fill(0);
+}
+
+function kittSegColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  if (t < 0.35) {
+    const v = t / 0.35;
+    return [Math.round(v * 140), 0, 0, v * 0.65];
+  } else if (t < 0.72) {
+    const v = (t - 0.35) / 0.37;
+    return [Math.round(140 + v * 100), Math.round(v * 25), 0, 0.65 + v * 0.25];
+  } else {
+    const v = (t - 0.72) / 0.28;
+    return [255, Math.round(25 + v * 210), Math.round(v * 170), 0.9 + v * 0.1];
+  }
+}
+
+function kittShow() {
+  const bar = $('kitt-bar');
+  bar.style.display = 'block';
+  bar.style.opacity = '1';
+  kittActive = true;
+  kittFading = false;
+  kittDir = 1;
+  kittLastTime = null;
+  const bw = bar.offsetWidth;
+  kittInitSegments(bw);
+  kittPos = kittSegStart;
+  const canvas = $('kitt-canvas');
+  canvas.width = bw;
+  canvas.height = 38;
+  canvas.getContext('2d').clearRect(0, 0, bw, 38);
+  if (!kittRafId) kittRafId = requestAnimationFrame(kittAnimate);
+}
+
+function kittHide() {
+  if (!kittActive) return;
+  kittFading = true;
+  const bar = $('kitt-bar');
+  bar.style.opacity = '0';
+  setTimeout(() => {
+    if (!kittFading) return;
+    bar.style.display = 'none';
+    kittActive = false;
+    kittFading = false;
+    cancelAnimationFrame(kittRafId);
+    kittRafId = null;
+  }, 400);
+}
+
+function kittAnimate(ts) {
+  if (!kittActive) { kittRafId = null; return; }
+  kittRafId = requestAnimationFrame(kittAnimate);
+  if (!kittLastTime) { kittLastTime = ts; return; }
+  const dt = Math.min((ts - kittLastTime) / 1000, 0.05);
+  kittLastTime = ts;
+
+  const kpm = pressTimestamps.length * 12;
+  const speed = 350 + kpm * 1.8;
+  const canvas = $('kitt-canvas');
+  const barWidth = $('kitt-bar').offsetWidth;
+  if (canvas.width !== barWidth) {
+    canvas.width = barWidth;
+    canvas.height = 38;
+    kittInitSegments(barWidth);
+  }
+
+  const n = kittSegments.length;
+  const scanEnd = kittSegStart + (n - 1) * KITT_SLOT_W;
+  kittPos += kittDir * speed * dt;
+  if (kittPos >= scanEnd) { kittPos = scanEnd; kittDir = -1; }
+  if (kittPos <= kittSegStart) { kittPos = kittSegStart; kittDir = 1; }
+
+  // Decay todos los segmentos
+  for (let i = 0; i < n; i++) kittSegments[i] *= 0.82;
+
+  // Encender segmentos según posición actual
+  for (let i = 0; i < n; i++) {
+    const segX = kittSegStart + i * KITT_SLOT_W;
+    const dist = Math.abs(kittPos - segX);
+    let target = 0;
+    if      (dist < KITT_SLOT_W * 0.5) target = 1.0;
+    else if (dist < KITT_SLOT_W * 1.2) target = 0.55;
+    else if (dist < KITT_SLOT_W * 2.0) target = 0.2;
+    if (target > kittSegments[i]) kittSegments[i] = target;
+  }
+
+  // Dibujar
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (let i = 0; i < n; i++) {
+    const x = kittSegStart + i * KITT_SLOT_W;
+    const intensity = kittSegments[i];
+
+    // Carcasa del segmento (siempre visible)
+    ctx.fillStyle = '#0d0000';
+    ctx.fillRect(x, KITT_SEG_Y, KITT_SEG_W, KITT_SEG_H);
+
+    if (intensity > 0.015) {
+      const [r, g, b, a] = kittSegColor(intensity);
+      ctx.shadowBlur = intensity * 16;
+      ctx.shadowColor = `rgba(220,40,0,${intensity * 0.85})`;
+      const grad = ctx.createLinearGradient(x, KITT_SEG_Y, x, KITT_SEG_Y + KITT_SEG_H);
+      const [rt, gt, bt, at] = kittSegColor(intensity * 0.6);
+      grad.addColorStop(0,   `rgba(${rt},${gt},${bt},${at})`);
+      grad.addColorStop(0.5, `rgba(${r},${g},${b},${a})`);
+      grad.addColorStop(1,   `rgba(${rt},${gt},${bt},${at})`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(x, KITT_SEG_Y, KITT_SEG_W, KITT_SEG_H);
+      ctx.shadowBlur = 0;
+    }
+  }
+}
+
+function kittCheckBuffer(char) {
+  const maxLen = Math.max(...KITT_SEQUENCES.map(s => s.length));
+  kittBuffer = (kittBuffer + char.toLowerCase()).slice(-maxLen);
+  if (KITT_SEQUENCES.some(s => kittBuffer.endsWith(s))) {
+    kittBuffer = '';
+    kittShow();
+  }
+}
+
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && kittActive) { kittHide(); return; }
+  if (e.repeat) return;
+  if (e.key === 'Backspace') { kittBuffer = kittBuffer.slice(0, -1); return; }
+  if (e.key.length === 1 || e.key === ' ') kittCheckBuffer(e.key);
+}, { passive: true });
+
+$('kitt-bar').addEventListener('click', kittHide);
+
+// --- INIT ---
+buildKeyboard();
+startKpmTimer();
+updateFocusWarning(document.hasFocus());
+updateKeymapStats();
+</script>
+
+</body>
+</html>
