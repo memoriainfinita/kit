@@ -9,8 +9,11 @@
 ## Structure
 
 ```
-KIT/
+kit/
   index.html                          — app completa autocontenida
+  README.md
+  LICENSE                             — GPL-3.0
+  docs/kit-demo.png                   — captura del README
   docs/superpowers/plans/
     2026-05-17-kit-html-port.md       — plan de implementación
   state.md
@@ -56,6 +59,10 @@ Herramienta de diagnóstico de entradas (teclado + ratón). Todo client-side, si
   - Barra centrada, 560px max-width 80vw, border-radius inferior
   - Cerrar: Escape o clic sobre la barra
 - Panel de historial: botón ✕ para ocultar, pestaña lateral vertical para reabrir
+
+### 2026-09-21 — publicación
+- Repo público `memoriainfinita/kit`, sin GitHub Pages
+- README, LICENSE (GPL-3.0) y captura en `docs/kit-demo.png`
 
 ## TODO
 
